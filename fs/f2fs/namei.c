@@ -237,7 +237,7 @@ static struct dentry *f2fs_lookup(struct inode *dir, struct dentry *dentry,
 	if (dentry->d_name.len > F2FS_NAME_LEN)
 		return ERR_PTR(-ENAMETOOLONG);
 
-	de = f2fs_find_entry(dir, &dentry->d_name, &page, nd ? nd->flags : 0);
+	de = f2fs_find_entry(dir, &dentry->d_name, &page, flags);
 	if (de) {
 		nid_t ino = le32_to_cpu(de->ino);
 		f2fs_dentry_kunmap(dir, page);
