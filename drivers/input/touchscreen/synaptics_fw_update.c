@@ -26,6 +26,7 @@
 #include <linux/input.h>
 #include <linux/firmware.h>
 #include <linux/string.h>
+#include <linux/ctype.h>
 #include <linux/input/synaptics_dsx.h>
 #include "synaptics_i2c_rmi4.h"
 
@@ -349,12 +350,11 @@ static void parse_header(void)
 	memcpy(img->product_info, data->product_info,
 		sizeof(data->product_info));
 
-#ifdef CHECK_BUILD_INFO
-	img->is_contain_build_info =
-		(data->options_firmware_id == (1 << OPTION_BUILD_INFO));
-#else
-	img->is_contain_build_info = 0;
-#endif
+	if (fwu->rmi4_data->check_build)
+		img->is_contain_build_info =
+			(data->options_firmware_id == (1 << OPTION_BUILD_INFO));
+	else
+		img->is_contain_build_info = 0;
 
 	if (img->is_contain_build_info) {
 		img->package_id = (data->pkg_id_msb << 8) |
@@ -831,15 +831,15 @@ static enum flash_area fwu_go_nogo(void)
 			"Device firmware id %d, .img firmware id %d\n",
 			deviceFirmwareID,
 			(unsigned int)imageFirmwareID);
-	if (imageFirmwareID > deviceFirmwareID) {
-		flash_area = UI_FIRMWARE;
-		goto exit;
-	} else if (imageFirmwareID < deviceFirmwareID) {
-		flash_area = NONE;
-		dev_info(&i2c_client->dev,
-			"%s: Img fw is older than device fw. Skip fw update.\n",
-			__func__);
-		goto exit;
+
+	/*
+	 * New firmware's FirmwareID isn't always increased
+	 * from the current firmware's, so just mark firmware update flag
+	 * if FirmwareIDs are different.
+	 * Firmware update will be decided by checking "config_id".
+	 */
+	if (imageFirmwareID != deviceFirmwareID) {
+		config_flag = 1;
 	}
 
 check_config_id:
@@ -856,6 +856,10 @@ check_config_id:
 		flash_area = NONE;
 		goto exit;
 	}
+	config_id[0] = toupper(config_id[0]);
+	config_id[1] = toupper(config_id[1]);
+	config_id[2] = toupper(config_id[2]);
+	config_id[3] = toupper(config_id[3]);
 	deviceConfigID =  extract_uint_be(config_id);
 
 	dev_info(&i2c_client->dev,
@@ -869,13 +873,14 @@ check_config_id:
 			fwu->config_data[1],
 			fwu->config_data[2],
 			fwu->config_data[3]);
-	imageConfigID =  extract_uint_be(fwu->config_data);
 
 	/* copy to keep debug information */
-	fwu->img_config_data[0] = fwu->config_data[0];
-	fwu->img_config_data[1] = fwu->config_data[1];
-	fwu->img_config_data[2] = fwu->config_data[2];
-	fwu->img_config_data[3] = fwu->config_data[3];
+	fwu->img_config_data[0] = toupper(fwu->config_data[0]);
+	fwu->img_config_data[1] = toupper(fwu->config_data[1]);
+	fwu->img_config_data[2] = toupper(fwu->config_data[2]);
+	fwu->img_config_data[3] = toupper(fwu->config_data[3]);
+
+	imageConfigID =  extract_uint_be(fwu->img_config_data);
 
 	dev_dbg(&i2c_client->dev,
 		"%s: Device config ID %d, .img config ID %d\n",
@@ -2040,6 +2045,11 @@ static ssize_t fwu_sysfs_config_id_show(struct device *dev,
 				fwu->f34_fd.ctrl_base_addr,
 				config_id,
 				sizeof(config_id));
+
+	config_id[0] = toupper(config_id[0]);
+	config_id[1] = toupper(config_id[1]);
+	config_id[2] = toupper(config_id[2]);
+	config_id[3] = toupper(config_id[3]);
 
 	return snprintf(buf, PAGE_SIZE, "DEVICE: %c%c%c%c IMG: %c%c%c%c\n",
 		config_id[0], config_id[1], config_id[2], config_id[3],

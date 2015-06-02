@@ -305,16 +305,16 @@ u64 gen_pool_alloc_aligned(struct gen_pool *pool, size_t size,
 
 	rcu_read_lock();
 	list_for_each_entry_rcu(chunk, &pool->chunks, next_chunk) {
-		unsigned long chunk_size_var;
+		unsigned long chunk_len;
 		if (size > atomic_read(&chunk->avail))
 			continue;
-		chunk_size_var = chunk_size(chunk) >> order;
+		chunk_len = chunk_size(chunk) >> order;
 
 retry:
-		start_bit = bitmap_find_next_zero_area_off(chunk->bits, chunk_size_var,
+		start_bit = bitmap_find_next_zero_area_off(chunk->bits, chunk_len,
 						   0, nbits, align_mask,
 						   chunk->start_addr >> order);
-		if (start_bit >= chunk_size_var)
+		if (start_bit >= chunk_len)
 			continue;
 		remain = bitmap_set_ll(chunk->bits, start_bit, nbits);
 		if (remain) {

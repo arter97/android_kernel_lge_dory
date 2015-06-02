@@ -282,6 +282,7 @@ struct qpnp_bms_chip {
 	u8				charge_increase;
 	int				fcc_resolution;
 	bool				battery_removed;
+	bool				in_taper_charge;
 	struct bms_irq			sw_cc_thr_irq;
 	struct bms_irq			ocv_thr_irq;
 	struct qpnp_vadc_chip		*vadc_dev;
@@ -770,6 +771,30 @@ static int get_battery_status(struct qpnp_bms_chip *chip)
 	/* Default to false if the battery power supply is not registered. */
 	pr_debug("battery power supply is not registered\n");
 	return POWER_SUPPLY_STATUS_UNKNOWN;
+}
+
+static int get_battery_charge_type(struct qpnp_bms_chip *chip)
+{
+	union power_supply_propval ret = {0,};
+	int rc;
+
+	if (chip->batt_psy == NULL)
+		chip->batt_psy = power_supply_get_by_name("battery");
+	if (chip->batt_psy) {
+		/* if battery has been registered, use the type property */
+		rc = chip->batt_psy->get_property(chip->batt_psy,
+				POWER_SUPPLY_PROP_CHARGE_TYPE, &ret);
+		if (rc) {
+			pr_debug("Battery does not export charge type: %d\n"
+									, rc);
+			return POWER_SUPPLY_CHARGE_TYPE_NONE;
+		}
+		return ret.intval;
+	}
+
+	/* Default to false if the battery power supply is not registered. */
+	pr_debug("battery power supply is not registered\n");
+	return POWER_SUPPLY_CHARGE_TYPE_NONE;
 }
 
 static bool is_battery_charging(struct qpnp_bms_chip *chip)
@@ -1918,7 +1943,8 @@ static int charging_adjustments(struct qpnp_bms_chip *chip,
 	batt_terminal_uv = vbat_uv + (ibat_ua * chip->r_conn_mohm) / 1000;
 
 	if (chip->soc_at_cv == -EINVAL) {
-		if (batt_terminal_uv >= chip->max_voltage_uv - VDD_MAX_ERR) {
+		if (batt_terminal_uv >= chip->max_voltage_uv - VDD_MAX_ERR ||
+							chip->in_taper_charge) {
 			chip->soc_at_cv = soc;
 			chip->prev_chg_soc = soc;
 			chip->ibat_at_cv_ua = params->iavg_ua;
@@ -2176,7 +2202,6 @@ skip_limits:
 	rc_new_uah = (params->fcc_uah * pc_new) / 100;
 	soc_new = (rc_new_uah - params->cc_uah - params->uuc_uah)*100
 					/ (params->fcc_uah - params->uuc_uah);
-	soc_new = bound_soc(soc_new);
 
 	/*
 	 * if soc_new is ZERO force it higher so that phone doesnt report soc=0
@@ -2434,6 +2459,8 @@ static int calculate_state_of_charge(struct qpnp_bms_chip *chip,
 	/* always clamp soc due to BMS hw/sw immaturities */
 	new_calculated_soc = clamp_soc_based_on_voltage(chip,
 					new_calculated_soc);
+
+	new_calculated_soc = bound_soc(new_calculated_soc);
 	/*
 	 * If the battery is full, configure the cc threshold so the system
 	 * wakes up after SoC changes
@@ -3237,6 +3264,7 @@ static void charging_ended(struct qpnp_bms_chip *chip)
 	mutex_lock(&chip->last_ocv_uv_mutex);
 	chip->soc_at_cv = -EINVAL;
 	chip->prev_chg_soc = -EINVAL;
+	chip->in_taper_charge = false;
 
 	/* update the chargecycles */
 	if (chip->end_soc > chip->start_soc) {
@@ -3368,6 +3396,11 @@ static void qpnp_bms_external_power_changed(struct power_supply *psy)
 	battery_insertion_check(chip);
 	batfet_status_check(chip);
 	battery_status_check(chip);
+
+	if (POWER_SUPPLY_CHARGE_TYPE_TAPER == get_battery_charge_type(chip))
+		chip->in_taper_charge = true;
+	else
+		chip->in_taper_charge = false;
 }
 
 static int qpnp_bms_power_get_property(struct power_supply *psy,

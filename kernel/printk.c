@@ -51,6 +51,10 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/printk.h>
 
+#ifdef CONFIG_EARLY_PRINTK_DIRECT
+extern void printascii(char *);
+#endif
+
 /* printk's without a loglevel use this.. */
 #define DEFAULT_MESSAGE_LOGLEVEL CONFIG_DEFAULT_MESSAGE_LOGLEVEL
 
@@ -1110,7 +1114,8 @@ static int syslog_oops_buf_print(char __user *buf, int size, char *text)
 	int len = 0;
 
 	raw_spin_lock_irq(&logbuf_lock);
-	if (syslog_seq < log_oops_first_seq) {
+	if (log_oops_first_seq != ULLONG_MAX &&
+	    syslog_seq < log_oops_first_seq) {
 		syslog_seq = log_oops_first_seq;
 		syslog_oops_buf_idx = 0;
 	}
@@ -1846,6 +1851,10 @@ asmlinkage int vprintk_emit(int facility, int level,
 			text = (char *)end_of_header;
 		}
 	}
+
+#ifdef CONFIG_EARLY_PRINTK_DIRECT
+	printascii(text);
+#endif
 
 	if (level == -1)
 		level = default_message_loglevel;
@@ -2780,7 +2789,7 @@ void wake_up_klogd(void)
 	preempt_enable();
 }
 
-int printk_deferred(const char *fmt, ...)
+int printk_sched(const char *fmt, ...)
 {
 	unsigned long flags;
 	va_list args;

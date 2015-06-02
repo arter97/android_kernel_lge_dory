@@ -8,6 +8,7 @@
 #include <linux/spinlock.h>
 #include <linux/rbtree.h>
 #include <linux/rwsem.h>
+#include <linux/stacktrace.h>
 #include <linux/completion.h>
 #include <linux/cpumask.h>
 #include <linux/page-debug-flags.h>
@@ -165,6 +166,7 @@ struct page {
 #ifdef CONFIG_WANT_PAGE_DEBUG_FLAGS
 	unsigned long debug_flags;	/* Use atomic bitops on this */
 #endif
+	struct task_struct *tsk_dirty;	/* task that sets this page dirty */
 
 #ifdef CONFIG_KMEMCHECK
 	/*
@@ -176,6 +178,12 @@ struct page {
 
 #ifdef LAST_NID_NOT_IN_PAGE_FLAGS
 	int _last_nid;
+#endif
+#ifdef CONFIG_PAGE_OWNER
+	int order;
+	gfp_t gfp_mask;
+	struct stack_trace trace;
+	unsigned long trace_entries[8];
 #endif
 }
 /*
@@ -467,15 +475,6 @@ static inline cpumask_t *mm_cpumask(struct mm_struct *mm)
 	return mm->cpu_vm_mask_var;
 }
 
-/* Return the name for an anonymous mapping or NULL for a file-backed mapping */
-static inline const char __user *vma_get_anon_name(struct vm_area_struct *vma)
-{
-	if (vma->vm_file)
-		return NULL;
-
-	return vma->shared.anon_name;
-}
-
 #if defined(CONFIG_NUMA_BALANCING) || defined(CONFIG_COMPACTION)
 /*
  * Memory barriers to keep this state in sync are graciously provided by
@@ -516,5 +515,14 @@ static inline void clear_tlb_flush_pending(struct mm_struct *mm)
 {
 }
 #endif
+
+/* Return the name for an anonymous mapping or NULL for a file-backed mapping */
+static inline const char __user *vma_get_anon_name(struct vm_area_struct *vma)
+{
+	if (vma->vm_file)
+		return NULL;
+
+	return vma->shared.anon_name;
+}
 
 #endif /* _LINUX_MM_TYPES_H */

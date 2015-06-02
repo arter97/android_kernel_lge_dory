@@ -645,8 +645,8 @@ static int sleep_thread(struct fsg_common *common)
 	__set_current_state(TASK_RUNNING);
 	spin_lock_irq(&common->lock);
 	common->thread_wakeup_needed = 0;
-	smp_rmb();	/* ensure the latest bh->state is visible */
 	spin_unlock_irq(&common->lock);
+	smp_rmb();	/* ensure the latest bh->state is visible */
 	return rc;
 }
 
@@ -2784,10 +2784,8 @@ static int create_lun_device(struct fsg_common *common,
 	 * Check if index is non-zero, increment current lun_config
 	 * and cur_lun pointers.
 	 */
-	if (add_lun_index) {
-		lcfg++;
-		curlun++;
-	}
+	lcfg += add_lun_index;
+	curlun += add_lun_index;
 
 	for (i = add_lun_index; i < nluns; ++i, ++curlun, ++lcfg) {
 		curlun->cdrom = !!lcfg->cdrom;

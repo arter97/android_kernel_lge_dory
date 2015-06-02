@@ -413,6 +413,7 @@ static inline pgoff_t basepage_index(struct page *page)
 {
 	return page->index;
 }
+
 #endif	/* CONFIG_HUGETLB_PAGE */
 
 #endif /* _LINUX_HUGETLB_H */

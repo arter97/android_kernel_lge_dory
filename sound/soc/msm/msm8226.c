@@ -26,9 +26,9 @@
 #include <sound/pcm.h>
 #include <sound/jack.h>
 #include <sound/q6afe-v2.h>
+#include <sound/q6core.h>
 
 #include "qdsp6v2/msm-pcm-routing-v2.h"
-#include "qdsp6v2/q6core.h"
 #include "../codecs/wcd9xxx-common.h"
 #include "../codecs/wcd9306.h"
 
@@ -2083,7 +2083,7 @@ static struct snd_soc_dai_link msm8226_9302_dai[] = {
 		.cpu_dai_name = "msm-dai-q6-dev.16395",
 		.platform_name = "msm-pcm-routing",
 		.codec_name = "tapan_codec",
-		.codec_dai_name	= "tapan_tx1",
+		.codec_dai_name	= "tapan9302_tx1",
 		.no_pcm = 1,
 		.be_id = MSM_BACKEND_DAI_SLIMBUS_5_TX,
 		.be_hw_params_fixup = msm_slim_0_tx_be_hw_params_fixup,
@@ -2274,8 +2274,7 @@ static int msm8226_asoc_machine_probe(struct platform_device *pdev)
 			sizeof(struct msm8226_asoc_mach_data), GFP_KERNEL);
 	if (!pdata) {
 		dev_err(&pdev->dev, "Can't allocate msm8226_asoc_mach_data\n");
-		ret = -ENOMEM;
-		goto err;
+		return -ENOMEM;
 	}
 
 	card = populate_snd_card_dailinks(&pdev->dev);

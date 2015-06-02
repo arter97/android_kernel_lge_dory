@@ -37,6 +37,7 @@
 #include <mach/msm_iomap.h>
 
 #include "../staging/android/timed_output.h"
+#include <linux/platform_data/msm_pwm_vibrator.h>
 
 #define ANDROID_VIBRATOR_USE_WORKQUEUE
 
@@ -55,8 +56,6 @@ static void __iomem *virt_base;
 #define REG_D		0x10
 #define REG_CBCR	0x24
 
-#define MMSS_CC_PWM_SET		0xFD8C3450
-#define MMSS_CC_PWM_SIZE	SZ_1K
 #define DEVICE_NAME		"msm_pwm_vibrator"
 
 #define MMSS_CC_M_DEFAULT	1
@@ -76,33 +75,7 @@ enum {
 	VIB_STAT_MAX,
 };
 
-struct timed_vibrator_data {
-	struct timed_output_dev dev;
-	struct hrtimer timer;
-	spinlock_t spinlock;
-	struct mutex lock;
-	int max_timeout;
-	int min_timeout;
-	int ms_time;            /* vibrator duration */
-	int status;             /* vibe status */
-	int gain;               /* default max gain(amp) */
-	int pwm;                /* n-value */
-	int braking_gain;
-	int braking_ms;
-	int gp1_clk_flag;
-	int haptic_en_gpio;
-	int motor_pwm_gpio;
-	int motor_pwm_func;
-	int warmup_ms;
-	int driving_ms;
-	ktime_t last_time;     /* time stamp */
-	struct delayed_work work_vibrator_off;
-	struct delayed_work work_vibrator_on;
-	bool use_vdd_supply;
-	struct regulator *vdd_reg;
-};
-
-static struct clk *cam_gp1_clk;
+static struct clk *cam_clk;
 
 static int vibrator_regulator_init(
 		struct platform_device *pdev,
@@ -281,17 +254,17 @@ static int msm_pwm_vibrator_force_set(struct timed_vibrator_data *vib,
 		vib->status = VIB_STAT_STOP;
 
 		mutex_lock(&vib_lock);
-		if (vib->gp1_clk_flag) {
-			clk_disable_unprepare(cam_gp1_clk);
-			vib->gp1_clk_flag = 0;
+		if (vib->clk_flag) {
+			clk_disable_unprepare(cam_clk);
+			vib->clk_flag = 0;
 		}
 		mutex_unlock(&vib_lock);
 	} else {
 		int status = msm_pwm_vibrator_get_next(vib);
 		mutex_lock(&vib_lock);
-		if (!vib->gp1_clk_flag) {
-			clk_prepare_enable(cam_gp1_clk);
-			vib->gp1_clk_flag = 1;
+		if (!vib->clk_flag) {
+			clk_prepare_enable(cam_clk);
+			vib->clk_flag = 1;
 		}
 		mutex_unlock(&vib_lock);
 
@@ -487,6 +460,12 @@ static int vibrator_parse_dt(struct device *dev,
 	ret = of_property_read_u32(np, "n-value", &vib->pwm);
 	if (ret < 0) {
 		pr_err("%s: n-value failed\n", __func__);
+		return ret;
+	}
+
+	ret = of_property_read_string(np, "clk-name", &vib->clk_name);
+	if (ret < 0) {
+		pr_err("%s: clk-name failed\n", __func__);
 		return ret;
 	}
 
@@ -759,6 +738,8 @@ static int msm_pwm_vibrator_probe(struct platform_device *pdev)
 {
 	int i, ret = 0;
 	struct timed_vibrator_data *vib;
+	struct resource *vib_resource;
+	int size;
 
 	platform_set_drvdata(pdev, &msm_pwm_vibrator_data);
 	vib = (struct timed_vibrator_data *)platform_get_drvdata(pdev);
@@ -781,22 +762,30 @@ static int msm_pwm_vibrator_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	virt_base = ioremap(MMSS_CC_PWM_SET, MMSS_CC_PWM_SIZE);
+	vib_resource = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!vib_resource) {
+		pr_err("\n\ngetting vib_resource failed\n");
+		ret = -ENODEV;
+		goto err_ioremap;
+	}
+
+	size = vib_resource->end - vib_resource->start + 1;
+	virt_base = ioremap(vib_resource->start, size);
 	if (virt_base == NULL) {
 		pr_err("%s: ioremap failed\n", __func__);
 		ret = -ENODEV;
 		goto err_ioremap;
 	}
 
-	cam_gp1_clk = clk_get(&pdev->dev, "cam_gp1_clk");
-	if (cam_gp1_clk == NULL) {
+	cam_clk = clk_get(&pdev->dev, vib->clk_name);
+	if (cam_clk == NULL) {
 		ret = -ENODEV;
 		goto err_clk_get;
 	}
-	clk_set_rate(cam_gp1_clk, 29268);
+	clk_set_rate(cam_clk, 29268);
 
 	vib->status = VIB_STAT_STOP;
-	vib->gp1_clk_flag = 0;
+	vib->clk_flag = 0;
 
 	INIT_DELAYED_WORK(&vib->work_vibrator_off, msm_pwm_vibrator_off);
 	INIT_DELAYED_WORK(&vib->work_vibrator_on, msm_pwm_vibrator_on);
@@ -830,7 +819,7 @@ err_sysfs:
 	}
 	timed_output_dev_unregister(&vib->dev);
 err_timed_output_dev_register:
-	clk_put(cam_gp1_clk);
+	clk_put(cam_clk);
 err_clk_get:
 	iounmap(virt_base);
 err_ioremap:
@@ -849,7 +838,7 @@ static int msm_pwm_vibrator_remove(struct platform_device *pdev)
 				&vibrator_device_attrs[i]);
 	}
 	timed_output_dev_unregister(&vib->dev);
-	clk_put(cam_gp1_clk);
+	clk_put(cam_clk);
 	iounmap(virt_base);
 	vibrator_gpio_deinit(vib);
 

@@ -4831,6 +4831,15 @@ static void hub_events(void)
 
 		hub = list_entry(tmp, struct usb_hub, event_list);
 		kref_get(&hub->kref);
+
+		/* make sure hdev is not freed before accessing it */
+		if (hub->disconnected) {
+			spin_unlock_irq(&hub_event_lock);
+			goto hub_disconnected;
+		} else {
+			usb_get_dev(hub->hdev);
+		}
+
 		hdev = hub->hdev;
 		usb_get_dev(hdev);
 		spin_unlock_irq(&hub_event_lock);
@@ -5050,6 +5059,7 @@ static void hub_events(void)
  loop_disconnected:
 		usb_unlock_device(hdev);
 		usb_put_dev(hdev);
+ hub_disconnected:
 		kref_put(&hub->kref, hub_release);
 
         } /* end while (1) */

@@ -1378,7 +1378,7 @@ static void usbnet_bh (unsigned long param)
 	 */
 	if (waitqueue_active(&dev->wait)) {
 		if (dev->txq.qlen + dev->rxq.qlen + dev->done.qlen == 0)
-			wake_up(&unlink_wakeup);
+			wake_up_all(&unlink_wakeup);
 
 	// or are we maybe short a few urbs?
 	} else if (netif_running (dev->net) &&
