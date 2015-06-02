@@ -60,6 +60,7 @@ on post-fs-data
 on boot
     mount debugfs /sys/kernel/debug /sys/kernel/debug
     chown system system /sys/kernel/debug/kgsl/proc
+    chown system system /sys/class/graphics/fb0/idle_mode
     chown system system /sys/bus/i2c/devices/5-0020/idle_mode
 
     setprop ro.radio.noril yes
