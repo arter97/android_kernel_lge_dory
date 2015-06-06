@@ -93,6 +93,14 @@ module_param(enable, int, 0);
  */
 static long WDT_HZ = 32765;
 module_param(WDT_HZ, long, 0);
+
+/*
+ * On the kernel command line specify
+ * watchdog_v2.ipi_opt_en=1 to enable the watchdog ipi ping
+ * optimization. By default it is turned off
+ */
+static int ipi_opt_en;
+module_param(ipi_opt_en, int, 0);
 #ifdef CONFIG_LGE_HANDLE_PANIC
 static void __iomem *msm_timer0_base;
 
@@ -106,14 +114,6 @@ static void wdt_timer_set_timer0_base(void __iomem * iomem)
 	msm_timer0_base = iomem;
 }
 #endif
-
-/*
- * On the kernel command line specify
- * watchdog_v2.ipi_opt_en=1 to enable the watchdog ipi ping
- * optimization. By default it is turned off
- */
-static int ipi_opt_en;
-module_param(ipi_opt_en, int, 0);
 
 static void pet_watchdog_work(struct work_struct *work);
 static void init_watchdog_work(struct work_struct *work);
@@ -618,9 +618,6 @@ static int msm_wdog_dt_to_pdata(struct platform_device *pdev,
 				__func__);
 		return -ENXIO;
 	}
-#ifdef CONFIG_LGE_HANDLE_PANIC
-	wdt_timer_set_timer0_base(pdata->base);
-#endif
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 					   "wdt-absent-base");
@@ -636,6 +633,9 @@ static int msm_wdog_dt_to_pdata(struct platform_device *pdev,
 		dev_info(&pdev->dev, "wdog absent resource not present\n");
 	}
 
+#ifdef CONFIG_LGE_HANDLE_PANIC
+	wdt_timer_set_timer0_base(pdata->base);
+#endif
 	pdata->bark_irq = platform_get_irq(pdev, 0);
 	pdata->bite_irq = platform_get_irq(pdev, 1);
 	ret = of_property_read_u32(node, "qcom,bark-time", &pdata->bark_time);

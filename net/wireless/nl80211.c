@@ -8533,23 +8533,12 @@ static int nl80211_crit_protocol_stop(struct sk_buff *skb,
 static int nl80211_vendor_cmd(struct sk_buff *skb, struct genl_info *info)
 {
 	struct cfg80211_registered_device *rdev = info->user_ptr[0];
-	struct net_device *dev = NULL;
-	struct wireless_dev *wdev = NULL;
-	int i, err, ifindex;
+	struct wireless_dev *wdev =
+		__cfg80211_wdev_from_attrs(genl_info_net(info), info->attrs);
+	int i, err;
 	u32 vid, subcmd;
 
-	if (info->attrs[NL80211_ATTR_IFINDEX]) {
-		ifindex = nla_get_u32(info->attrs[NL80211_ATTR_IFINDEX]);
-		dev = dev_get_by_index(genl_info_net(info), ifindex);
-
-		if (!dev)
-			return -ENODEV;
-	}
-
-	if (dev && dev->ieee80211_ptr)
-		wdev = dev->ieee80211_ptr;
-
-	if (!rdev || !rdev->wiphy.vendor_commands)
+	if (!rdev->wiphy.vendor_commands)
 		return -EOPNOTSUPP;
 
 	if (IS_ERR(wdev)) {

@@ -408,7 +408,6 @@ struct qpnp_chg_chip {
 	unsigned int			step_dwn_thr_mv;
 	unsigned int			ext_set_ibat_ma;
 	unsigned int			ext_set_vddmax_mv;
-	unsigned int			remainder_ibat_ma;
 	bool				ext_ovp_ic_gpio_enabled;
 	unsigned int			ext_ovp_isns_gpio;
 	unsigned int			usb_trim_default;
@@ -2678,7 +2677,6 @@ get_prop_capacity(struct qpnp_chg_chip *chip)
 				&& soc <= chip->soc_resume_limit) {
 			pr_debug("resuming charging at %d%% soc\n", soc);
 			chip->resuming_charging = true;
-			qpnp_chg_irq_wake_enable(&chip->chg_fastchg);
 			qpnp_chg_set_appropriate_vbatdet(chip);
 			qpnp_chg_charge_en(chip, !chip->charging_disabled);
 		}
@@ -3014,8 +3012,6 @@ qpnp_chg_ibatmax_set(struct qpnp_chg_chip *chip, int chg_current)
 		pr_err("bad mA=%d asked to set\n", chg_current);
 		return -EINVAL;
 	}
-
-	chip->remainder_ibat_ma = chg_current % QPNP_CHG_I_STEP_MA;
 	temp = chg_current / QPNP_CHG_I_STEP_MA;
 	return qpnp_chg_masked_write(chip, chip->chgr_base + CHGR_IBAT_MAX,
 			QPNP_CHG_I_MASK, temp, 1);
@@ -3756,8 +3752,7 @@ static int qpnp_chg_compensate_ibat_error(struct qpnp_chg_chip *chip)
 		return -EIO;
 	}
 
-	ibat_diff_ma = -1 * ibat_ma
-			- (ibat_max_ma + chip->remainder_ibat_ma);
+	ibat_diff_ma = -1 * ibat_ma - ibat_max_ma;
 
 	if (abs(ibat_diff_ma) > QPNP_CHG_I_STEP_MA * 2) {
 		pr_err("ibat diff is out of range\n");

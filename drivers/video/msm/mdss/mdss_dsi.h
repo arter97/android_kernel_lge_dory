@@ -18,8 +18,6 @@
 #include <linux/mdss_io_util.h>
 #include <linux/irqreturn.h>
 #include <linux/pinctrl/consumer.h>
-#include <linux/wakelock.h>
-#include <linux/gpio.h>
 
 #include "mdss_panel.h"
 #include "mdss_dsi_cmd.h"
@@ -91,14 +89,12 @@ enum dsi_panel_bl_ctrl {
 	BL_PWM,
 	BL_WLED,
 	BL_DCS_CMD,
-	BL_DCS_L_CMD,
 	BL_EXTERNAL,
 };
 
 enum dsi_panel_status_mode {
 	ESD_BTA,
 	ESD_REG,
-	ESD_TE,
 	ESD_MAX,
 };
 
@@ -298,7 +294,6 @@ struct mdss_dsi_ctrl_pdata {
 	u8 ctrl_state;
 	int panel_mode;
 	int irq_cnt;
-	int disp_te_gpio;
 	int rst_gpio;
 	int disp_en_gpio;
 	int bklt_en_gpio;
@@ -311,9 +306,7 @@ struct mdss_dsi_ctrl_pdata {
 	int new_fps;
 	int pwm_enabled;
 	int idle;
-	bool bklt_off;
 	bool panel_bias_vreg;
-	atomic_t te_irq_ready;
 
 	bool cmd_sync_wait_broadcast;
 	bool cmd_sync_wait_trigger;
@@ -342,8 +335,6 @@ struct mdss_dsi_ctrl_pdata {
 	struct dsi_panel_cmds low_fps_mode_on_cmds;
 	struct dsi_panel_cmds low_fps_mode_off_cmds;
 
-	struct dsi_panel_cmds panel_reset_cmds;
-
 	struct dcs_cmd_list cmdlist;
 	struct completion dma_comp;
 	struct completion mdp_comp;
@@ -354,6 +345,7 @@ struct mdss_dsi_ctrl_pdata {
 	int mdp_busy;
 	struct mutex mutex;
 	struct mutex cmd_mutex;
+	struct mutex suspend_mutex;
 
 	u32 ulps_clamp_ctrl_off;
 	u32 ulps_phyrst_ctrl_off;
@@ -368,9 +360,6 @@ struct mdss_dsi_ctrl_pdata {
 
 	struct dsi_pinctrl_res pin_res;
 
-	struct work_struct idle_on_work;
-	struct wake_lock idle_on_wakelock;
-
 	unsigned long dma_size;
 	dma_addr_t dma_addr;
 	bool cmd_cfg_restore;
@@ -378,15 +367,12 @@ struct mdss_dsi_ctrl_pdata {
 
 	int horizontal_idle_cnt;
 	struct panel_horizontal_idle *line_idle;
-
-	bool panel_reset_for_esd;
 };
 
 struct dsi_status_data {
 	struct notifier_block fb_notifier;
 	struct delayed_work check_status;
 	struct msm_fb_data_type *mfd;
-	struct wake_lock status_wakelock;
 };
 
 int dsi_panel_device_register(struct device_node *pan_node,
@@ -415,7 +401,6 @@ void mdss_dsi_controller_cfg(int enable,
 void mdss_dsi_sw_reset(struct mdss_dsi_ctrl_pdata *ctrl_pdata, bool restore);
 
 irqreturn_t mdss_dsi_isr(int irq, void *ptr);
-irqreturn_t hw_vsync_handler(int irq, void *data);
 void mdss_dsi_irq_handler_config(struct mdss_dsi_ctrl_pdata *ctrl_pdata);
 
 void mdss_dsi_set_tx_power_mode(int mode, struct mdss_panel_data *pdata);
@@ -427,7 +412,6 @@ void mdss_dsi_clk_deinit(struct mdss_dsi_ctrl_pdata *ctrl_pdata);
 int mdss_dsi_enable_bus_clocks(struct mdss_dsi_ctrl_pdata *ctrl_pdata);
 void mdss_dsi_disable_bus_clocks(struct mdss_dsi_ctrl_pdata *ctrl_pdata);
 int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable);
-void mdss_dsi_panel_reset_esd(struct mdss_dsi_ctrl_pdata *ctrl);
 void mdss_dsi_phy_disable(struct mdss_dsi_ctrl_pdata *ctrl);
 void mdss_dsi_cmd_test_pattern(struct mdss_dsi_ctrl_pdata *ctrl);
 void mdss_dsi_video_test_pattern(struct mdss_dsi_ctrl_pdata *ctrl);
@@ -436,7 +420,7 @@ void mdss_dsi_phy_sw_reset(unsigned char *ctrl_base);
 void mdss_dsi_phy_init(struct mdss_dsi_ctrl_pdata *ctrl);
 void mdss_dsi_ctrl_init(struct device *ctrl_dev,
 			struct mdss_dsi_ctrl_pdata *ctrl);
-int mdss_dsi_cmd_mdp_busy(struct mdss_dsi_ctrl_pdata *ctrl);
+void mdss_dsi_cmd_mdp_busy(struct mdss_dsi_ctrl_pdata *ctrl);
 void mdss_dsi_wait4video_done(struct mdss_dsi_ctrl_pdata *ctrl);
 int mdss_dsi_cmdlist_commit(struct mdss_dsi_ctrl_pdata *ctrl, int from_mdp);
 void mdss_dsi_cmdlist_kickoff(int intf);
@@ -449,9 +433,7 @@ void mdss_dsi_dln0_phy_err(struct mdss_dsi_ctrl_pdata *ctrl);
 int mdss_dsi_panel_init(struct device_node *node,
 		struct mdss_dsi_ctrl_pdata *ctrl_pdata,
 		bool cmd_cfg_cont_splash);
-
 void mdss_dsi_panel_low_fps_mode(struct mdss_dsi_ctrl_pdata *ctrl, int enable);
-int mdss_dsi_panel_get_height(void);
 
 int mdss_panel_get_dst_fmt(u32 bpp, char mipi_mode, u32 pixel_packing,
 				char *dst_format);
@@ -508,7 +490,6 @@ static inline struct mdss_dsi_ctrl_pdata *mdss_dsi_get_other_ctrl(
 		return ctrl_list[DSI_CTRL_LEFT];
 
 	return ctrl_list[DSI_CTRL_RIGHT];
-
 }
 
 static inline struct mdss_dsi_ctrl_pdata *mdss_dsi_get_ctrl_by_index(int ndx)
@@ -517,13 +498,6 @@ static inline struct mdss_dsi_ctrl_pdata *mdss_dsi_get_ctrl_by_index(int ndx)
 		return NULL;
 
 	return ctrl_list[ndx];
-}
-
-static inline bool mdss_dsi_is_te_based_esd(struct mdss_dsi_ctrl_pdata *ctrl)
-{
-	return (ctrl->status_mode == ESD_TE) &&
-		gpio_is_valid(ctrl->disp_te_gpio) &&
-		mdss_dsi_is_left_ctrl(ctrl);
 }
 
 static inline bool mdss_dsi_is_panel_off(struct mdss_panel_data *pdata)

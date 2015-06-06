@@ -2703,9 +2703,6 @@ static void msm_otg_sm_work(struct work_struct *w)
 						OTG_STATE_B_PERIPHERAL;
 					break;
 				case USB_SDP_CHARGER:
-					if (motg->pdata->no_set_vbus_power)
-						msm_otg_notify_charger(motg,
-								IDEV_CHG_MIN);
 					msm_otg_start_peripheral(otg, 1);
 					otg->phy->state =
 						OTG_STATE_B_PERIPHERAL;
@@ -3431,9 +3428,7 @@ static void msm_otg_set_vbus_state(int online)
 		}
 		complete(&pmic_vbus_init);
 		pr_debug("PMIC: BSV init complete\n");
-		/* fallthrough and schedule state machine work
-		 * to handle vbus change incase no current work
-		 */
+		return;
 	}
 
 out:
@@ -3837,9 +3832,7 @@ static int otg_power_set_property_usb(struct power_supply *psy,
 	switch (psp) {
 	/* Process PMIC notification in PRESENT prop */
 	case POWER_SUPPLY_PROP_PRESENT:
-		/* Pre-check to eliminate redundancy */
-		if(!!test_bit(B_SESS_VLD, &motg->inputs) != val->intval)
-			msm_otg_set_vbus_state(val->intval);
+		msm_otg_set_vbus_state(val->intval);
 		break;
 	/* The ONLINE property reflects if usb has enumerated */
 	case POWER_SUPPLY_PROP_ONLINE:
@@ -3884,9 +3877,6 @@ static int otg_power_property_is_writeable_usb(struct power_supply *psy,
 
 static char *otg_pm_power_supplied_to[] = {
 	"battery",
-#ifdef CONFIG_CHARGER_DOCK
-	"dock",
-#endif
 };
 
 static enum power_supply_property otg_pm_power_props_usb[] = {
@@ -4434,8 +4424,6 @@ struct msm_otg_platform_data *msm_otg_dt_to_pdata(struct platform_device *pdev)
 
 	pdata->rw_during_lpm_workaround = of_property_read_bool(node,
 				"qcom,hsusb-otg-rw-during-lpm-workaround");
-	pdata->no_set_vbus_power = of_property_read_bool(node,
-				"qcom,no-set-vbus-power");
 
 	return pdata;
 }
@@ -4793,8 +4781,7 @@ static int msm_otg_probe(struct platform_device *pdev)
 		msm_mpm_enable_pin(pdata->mpm_dmshv_int, 1);
 
 	phy->init = msm_otg_reset;
-	if (!pdata->no_set_vbus_power)
-		phy->set_power = msm_otg_set_power;
+	phy->set_power = msm_otg_set_power;
 	phy->set_suspend = msm_otg_set_suspend;
 
 	phy->io_ops = &msm_otg_io_ops;
@@ -5199,7 +5186,6 @@ static int msm_otg_pm_resume(struct device *dev)
 
 		/* sm work will start in pm notify */
 	}
-	atomic_set(&motg->pm_suspended, 0);
 
 	return ret;
 }

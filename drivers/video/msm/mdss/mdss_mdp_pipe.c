@@ -19,7 +19,6 @@
 #include <linux/mutex.h>
 
 #include "mdss_mdp.h"
-#include "mdss_dsi.h"
 
 #define SMP_MB_SIZE		(mdss_res->smp_mb_size)
 #define SMP_MB_CNT		(mdss_res->smp_mb_cnt)
@@ -742,7 +741,6 @@ static struct mdss_mdp_pipe *mdss_mdp_pipe_init(struct mdss_mdp_mixer *mixer,
 		mutex_init(&pipe->pp_res.hist.hist_mutex);
 		spin_lock_init(&pipe->pp_res.hist.hist_lock);
 		kref_init(&pipe->kref);
-		INIT_LIST_HEAD(&pipe->buf_queue);
 		is_realtime = !((mixer->ctl->intf_num == MDSS_MDP_NO_INTF)
 				|| mixer->rotator_mode);
 		mdss_mdp_qos_vbif_remapper_setup(mdata, pipe, is_realtime);
@@ -1137,7 +1135,6 @@ int mdss_mdp_pipe_handoff(struct mdss_mdp_pipe *pipe)
 	pipe->is_handed_off = true;
 	pipe->play_cnt = 1;
 	kref_init(&pipe->kref);
-	INIT_LIST_HEAD(&pipe->buf_queue);
 
 error:
 	return rc;
@@ -1154,9 +1151,6 @@ static int mdss_mdp_image_setup(struct mdss_mdp_pipe *pipe,
 	u32 tmp_src_xy, tmp_src_size;
 	int ret = 0;
 	struct mdss_data_type *mdata = mdss_mdp_get_mdata();
-#ifdef CONFIG_FB_MSM_MDSS_FLIP_UD
-	int panel_height;
-#endif
 	struct mdss_rect sci, dst, src;
 	bool rotation = false;
 
@@ -1195,11 +1189,6 @@ static int mdss_mdp_image_setup(struct mdss_mdp_pipe *pipe,
 	if (decimation)
 		pr_debug("Image decimation h=%d v=%d\n",
 				pipe->horz_deci, pipe->vert_deci);
-
-#ifdef CONFIG_FB_MSM_MDSS_FLIP_UD
-	panel_height = mdss_dsi_panel_get_height();
-	pipe->dst.y = (panel_height) - (pipe->dst.y + pipe->dst.h);
-#endif
 
 	sci = pipe->mixer_left->ctl->roi;
 	dst = pipe->dst;
@@ -1301,10 +1290,6 @@ static int mdss_mdp_format_setup(struct mdss_mdp_pipe *pipe)
 	if (pipe->flags & MDP_FLIP_UD)
 		opmode |= MDSS_MDP_OP_FLIP_UD;
 
-#ifdef CONFIG_FB_MSM_MDSS_FLIP_UD
-	opmode ^= MDSS_MDP_OP_FLIP_UD;
-#endif
-
 	pr_debug("pnum=%d format=%d opmode=%x\n", pipe->num, fmt->format,
 			opmode);
 
@@ -1392,6 +1377,8 @@ static int mdss_mdp_src_addr_setup(struct mdss_mdp_pipe *pipe,
 	int ret = 0;
 
 	pr_debug("pnum=%d\n", pipe->num);
+
+	data.bwc_enabled = pipe->bwc_mode;
 
 	ret = mdss_mdp_data_check(&data, &pipe->src_planes);
 	if (ret)
@@ -1504,7 +1491,7 @@ int mdss_mdp_pipe_queue_data(struct mdss_mdp_pipe *pipe,
 		 (pipe->mixer_left->type == MDSS_MDP_MIXER_TYPE_WRITEBACK) &&
 		 (ctl->mdata->mixer_switched)) || ctl->roi_changed;
 	if ((!(pipe->flags & MDP_VPU_PIPE) &&
-			(src_data == NULL)) ||
+			(src_data == NULL || !pipe->has_buf)) ||
 			(pipe->flags & MDP_SOLID_FILL)) {
 		pipe->params_changed = 0;
 		mdss_mdp_pipe_solidfill_setup(pipe);
@@ -1541,9 +1528,9 @@ int mdss_mdp_pipe_queue_data(struct mdss_mdp_pipe *pipe,
 			mdss_mdp_pipe_panic_signal_ctrl(pipe, true);
 	}
 
-	if (src_data == NULL) {
-		pr_debug("src_data=%p pipe num=%dx\n",
-				src_data, pipe->num);
+	if (src_data == NULL || !pipe->has_buf) {
+		pr_debug("src_data=%p has_buf=%d pipe num=%dx\n",
+				src_data, pipe->has_buf, pipe->num);
 		goto update_nobuf;
 	}
 

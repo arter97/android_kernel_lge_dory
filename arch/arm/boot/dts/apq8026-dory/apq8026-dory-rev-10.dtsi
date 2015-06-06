@@ -44,7 +44,7 @@
 			status = "ok";
 		};
 	};
-	vibrator@fd8C3450 {
+	vibrator {
 		motor-pwm-gpio = <&msmgpio 34 0x00>;
 		motor-pwm-func = <3>;
 		motor-amp = <100>;

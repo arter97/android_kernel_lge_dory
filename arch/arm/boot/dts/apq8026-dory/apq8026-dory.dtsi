@@ -11,11 +11,11 @@
  * GNU General Public License for more details.
  */
 
-#include "../qcom/msm8226.dtsi"
 #include "../qcom/apq8026-v2.dtsi"
 #include "apq8026-dory-memory.dtsi"
 #include "../qcom/msm8226-w-qseecom.dtsi"
-#include "../qcom/msm8226-v2-pm.dtsi"
+#include "../qcom/msm8226-w-sharedmem.dtsi"
+#include "../qcom/msm8x26w-gpu.dtsi"
 #include "apq8026-dory-panel.dtsi"
 #include "apq8026-dory-sensor.dtsi"
 #include "apq8026-dory-usb.dtsi"
@@ -111,11 +111,7 @@
 		status = "disabled";
 	};
 	qcom,mss@fc880000 {
-		/delete-property/ qcom,gpio-err-fatal;
-                /delete-property/ qcom,gpio-err-ready;
-                /delete-property/ qcom,gpio-proxy-unvote;
-                /delete-property/ qcom,gpio-stop-ack;
-                /delete-property/ qcom,gpio-force-stop;
+		status = "disabled";
 	};
 };
 

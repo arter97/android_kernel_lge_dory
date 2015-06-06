@@ -55,10 +55,6 @@
 #include "mdss_fb.h"
 #include "mdss_mdp_splash_logo.h"
 
-#ifdef CONFIG_LGE_HANDLE_PANIC
-#include <mach/lge_handle_panic.h>
-#endif
-
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
 #define MDSS_FB_NUM 3
 #else
@@ -757,7 +753,6 @@ static int mdss_fb_probe(struct platform_device *pdev)
 	if (!lcd_backlight_registered &&
 			mfd->panel_info->bklt_ctrl != BL_EXTERNAL &&
 			mfd->panel_info->bklt_ctrl != UNKNOWN_CTRL) {
-		mfd->bl_level = mfd->panel_info->brightness_default;
 		backlight_led.brightness = mfd->panel_info->brightness_max;
 		backlight_led.max_brightness = mfd->panel_info->brightness_max;
 		if (led_classdev_register(&pdev->dev, &backlight_led))
@@ -1078,8 +1073,6 @@ void mdss_fb_set_backlight(struct msm_fb_data_type *mfd, u32 bkl_lvl)
 		|| !mfd->bl_updated) && !IS_CALIB_MODE_BL(mfd)) {
 		mfd->unset_bl_level = bkl_lvl;
 		return;
-	} else if (mdss_fb_is_power_on(mfd) && mfd->panel_info->panel_dead) {
-		mfd->unset_bl_level = mfd->bl_level;
 	} else {
 		mfd->unset_bl_level = 0;
 	}
@@ -1231,6 +1224,7 @@ static int mdss_fb_blank_unblank(struct msm_fb_data_type *mfd)
 			goto error;
 
 		mfd->panel_power_state = MDSS_PANEL_POWER_ON;
+		mfd->panel_info->panel_dead = false;
 		mutex_lock(&mfd->update.lock);
 		mfd->update.type = NOTIFY_TYPE_UPDATE;
 		mfd->update.is_suspend = 0;
@@ -1738,13 +1732,6 @@ static int mdss_fb_alloc_fbmem_iommu(struct msm_fb_data_type *mfd, int dom)
 
 	pr_debug("alloc 0x%zxB @ (%pa phys) (0x%p virt) (%pa iova) for fb%d\n",
 		 size, &phys, virt, &mfd->iova, mfd->index);
-
-#ifdef CONFIG_LGE_HANDLE_PANIC
-	/* save fb1 address for lge crash handler display buffer */
-	lge_set_fb1_addr((unsigned int)(phys +
-				(mfd->fbi->fix.line_length *
-				 mfd->fbi->var.yres)));
-#endif
 
 	mfd->fbi->screen_base = virt;
 	mfd->fbi->fix.smem_start = phys;
@@ -2536,7 +2523,7 @@ static int mdss_fb_pan_display_ex(struct fb_info *info,
 	if (var->yoffset > (info->var.yres_virtual - info->var.yres))
 		return -EINVAL;
 
-	ret = mdss_fb_wait_for_kickoff(mfd);
+	ret = mdss_fb_pan_idle(mfd);
 	if (ret) {
 		pr_err("Shutdown pending. Aborting operation\n");
 		return ret;
@@ -3181,15 +3168,12 @@ static int __ioctl_wait_idle(struct msm_fb_data_type *mfd, u32 cmd)
 	if (mfd->wait_for_kickoff &&
 		((cmd == MSMFB_OVERLAY_PREPARE) ||
 		(cmd == MSMFB_BUFFER_SYNC) ||
-		(cmd == MSMFB_OVERLAY_PLAY) ||
-		(cmd == MSMFB_OVERLAY_UNSET) ||
 		(cmd == MSMFB_OVERLAY_SET))) {
 		ret = mdss_fb_wait_for_kickoff(mfd);
 	} else if ((cmd != MSMFB_VSYNC_CTRL) &&
 		(cmd != MSMFB_OVERLAY_VSYNC_CTRL) &&
 		(cmd != MSMFB_ASYNC_BLIT) &&
 		(cmd != MSMFB_BLIT) &&
-		(cmd != MSMFB_DISPLAY_COMMIT) &&
 		(cmd != MSMFB_NOTIFY_UPDATE) &&
 		(cmd != MSMFB_OVERLAY_PREPARE)) {
 		ret = mdss_fb_pan_idle(mfd);

@@ -40,17 +40,22 @@
 #include <mach/gpiomux.h>
 #include <mach/msm_iomap.h>
 #include <mach/msm_memtypes.h>
+#include <soc/qcom/socinfo.h>
 #include <mach/board.h>
-#include <soc/qcom/smem.h>
-#include <soc/qcom/smd.h>
 #include <soc/qcom/rpm-smd.h>
+#include <soc/qcom/smd.h>
+#include <soc/qcom/smem.h>
 #include <soc/qcom/spm.h>
 #include <soc/qcom/pm.h>
-#include <soc/qcom/socinfo.h>
 #include "../board-dt.h"
 #include "../clock.h"
 #include "../platsmp.h"
 #include <mach/board_lge.h>
+
+static struct of_dev_auxdata msm_hsic_host_adata[] = {
+	OF_DEV_AUXDATA("qcom,hsic-host", 0xF9A00000, "msm_hsic_host", NULL),
+	{}
+};
 
 static struct of_dev_auxdata msm8226_auxdata_lookup[] __initdata = {
 	OF_DEV_AUXDATA("qcom,sdhci-msm", 0xF9824900, \
@@ -60,6 +65,8 @@ static struct of_dev_auxdata msm8226_auxdata_lookup[] __initdata = {
 	OF_DEV_AUXDATA("qcom,sdhci-msm", 0xF9864900, \
 			"msm_sdcc.3", NULL),
 	OF_DEV_AUXDATA("qcom,hsic-host", 0xF9A00000, "msm_hsic_host", NULL),
+	OF_DEV_AUXDATA("qcom,hsic-smsc-hub", 0, "msm_smsc_hub",
+			msm_hsic_host_adata),
 
 	{}
 };
@@ -171,9 +178,9 @@ static const char * const msm8226_dt_match[] __initconst = {
 };
 
 DT_MACHINE_START(MSM8226_DT, "Qualcomm MSM 8226 DORY (Flattened Device Tree)")
-	.map_io			= msm_map_msm8226_io,
-	.init_machine		= msm8226_init,
-	.dt_compat		= msm8226_dt_match,
-	.reserve		= msm8226_reserve,
-	.smp			= &arm_smp_ops,
+	.map_io = msm_map_msm8226_io,
+	.init_machine = msm8226_init,
+	.dt_compat = msm8226_dt_match,
+	.reserve = msm8226_reserve,
+	.smp = &arm_smp_ops,
 MACHINE_END

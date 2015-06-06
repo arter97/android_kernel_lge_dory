@@ -212,6 +212,16 @@ config BATTERY_MAX17050
 	  in handheld and portable equipment. The MAX17050 is configured
 	  to operate with a single lithium cell.
 
+config BATTERY_ANDROID
+	tristate "Battery driver for Android"
+	help
+	  Say Y to enable generic support for battery charging according
+	  to common Android policies.
+	  This driver adds periodic battery level and health monitoring,
+	  kernel log reporting and other debugging features, common board
+	  battery file glue logic for battery/case temperature sensors,
+	  etc.
+
 config BATTERY_Z2
 	tristate "Z2 battery driver"
 	depends on I2C && MACH_ZIPIT2
@@ -542,17 +552,6 @@ config BATTERY_TEMP_MONITOR
 	  Say Y to enable battery temperature control for safety.
 	  It controls charging current depending on battery temperature.
 
-config BATTERY_BQ27421
-	tristate "BQ27421 battery driver"
-	depends on I2C
-	default n
-	help
-	  Say Y here to enable support for batteries with BQ27421 (I2C) chips.
-
-config CHARGER_DOCK
-	bool "Charger dock detector driver"
-	help
-	  Say Y to enable charger dock detector.
 
 source "drivers/power/reset/Kconfig"
 

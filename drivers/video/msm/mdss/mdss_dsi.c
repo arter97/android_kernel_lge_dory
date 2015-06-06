@@ -589,18 +589,8 @@ int mdss_dsi_on(struct mdss_panel_data *pdata)
 	 * data lanes for LP11 init
 	 */
 	if (mipi->lp11_init) {
-		u32 tmp;
-
 		if (mdss_dsi_pinctrl_set_state(ctrl_pdata, true))
 			pr_debug("reset enable: pinctrl not enabled\n");
-
-		tmp = MIPI_INP((ctrl_pdata->ctrl_base) + 0xac);
-		tmp |= (1<<28);
-		MIPI_OUTP((ctrl_pdata->ctrl_base) + 0xac, tmp);
-		wmb();
-		mdelay(2);
-		pr_debug("%s: lp11 reset!!\n", __func__);
-
 		mdss_dsi_panel_reset(pdata, 1);
 	}
 
@@ -717,11 +707,8 @@ static int mdss_dsi_unblank(struct mdss_panel_data *pdata)
 	}
 
 	if ((pdata->panel_info.type == MIPI_CMD_PANEL) &&
-		mipi->vsync_enable && mipi->hw_vsync_mode) {
+		mipi->vsync_enable && mipi->hw_vsync_mode)
 		mdss_dsi_set_tear_on(ctrl_pdata);
-		if (mdss_dsi_is_te_based_esd(ctrl_pdata))
-			enable_irq(gpio_to_irq(ctrl_pdata->disp_te_gpio));
-	}
 
 error:
 	mdss_dsi_clk_ctrl(ctrl_pdata, DSI_ALL_CLKS, 0);
@@ -777,14 +764,8 @@ static int mdss_dsi_blank(struct mdss_panel_data *pdata, int power_state)
 	}
 
 	if ((pdata->panel_info.type == MIPI_CMD_PANEL) &&
-		mipi->vsync_enable && mipi->hw_vsync_mode) {
-		if (mdss_dsi_is_te_based_esd(ctrl_pdata)) {
-				disable_irq(gpio_to_irq(
-					ctrl_pdata->disp_te_gpio));
-				atomic_add_unless(&ctrl_pdata->te_irq_ready, -1, 0);
-		}
+		mipi->vsync_enable && mipi->hw_vsync_mode)
 		mdss_dsi_set_tear_off(ctrl_pdata);
-	}
 
 	if (ctrl_pdata->ctrl_state & CTRL_STATE_PANEL_INIT) {
 		if (!pdata->panel_info.dynamic_switch_pending) {
@@ -1162,9 +1143,6 @@ static int mdss_dsi_event_handler(struct mdss_panel_data *pdata,
 		rc = mdss_dsi_register_recovery_handler(ctrl_pdata,
 			(struct mdss_panel_recovery *)arg);
 		break;
-	case MDSS_EVENT_PANEL_RESET:
-		mdss_dsi_panel_reset_esd(ctrl_pdata);
-		break;
 	default:
 		pr_debug("%s: unhandled event=%d\n", __func__, event);
 		break;
@@ -1270,7 +1248,6 @@ static int mdss_dsi_ctrl_probe(struct platform_device *pdev)
 	u32 index;
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 	struct device_node *dsi_pan_node = NULL;
-	struct mdss_panel_info *pinfo = NULL;
 	char panel_cfg[MDSS_MAX_PANEL_LEN];
 	const char *ctrl_name;
 	bool cmd_cfg_cont_splash = true;
@@ -1307,8 +1284,6 @@ static int mdss_dsi_ctrl_probe(struct platform_device *pdev)
 		}
 		platform_set_drvdata(pdev, ctrl_pdata);
 	}
-
-	atomic_set(&ctrl_pdata->te_irq_ready, 0);
 
 	ctrl_name = of_get_property(pdev->dev.of_node, "label", NULL);
 	if (!ctrl_name)
@@ -1392,22 +1367,6 @@ static int mdss_dsi_ctrl_probe(struct platform_device *pdev)
 		goto error_pan_node;
 	}
 
-	pinfo = &ctrl_pdata->panel_data.panel_info;
-	if (pinfo->cont_splash_enabled)
-		mdss_dsi_op_mode_config(pinfo->mipi.mode,
-				&ctrl_pdata->panel_data);
-
-	if (mdss_dsi_is_te_based_esd(ctrl_pdata)) {
-		rc = devm_request_irq(&pdev->dev,
-			gpio_to_irq(ctrl_pdata->disp_te_gpio),
-			hw_vsync_handler, IRQF_TRIGGER_FALLING,
-			"VSYNC_GPIO", ctrl_pdata);
-		if (rc) {
-			pr_err("TE request_irq failed.\n");
-			goto error_pan_node;
-		}
-		disable_irq(gpio_to_irq(ctrl_pdata->disp_te_gpio));
-	}
 	pr_debug("%s: Dsi Ctrl->%d initialized\n", __func__, index);
 	return 0;
 
@@ -1469,11 +1428,13 @@ static int mdss_dsi_pm_prepare(struct device *dev)
 		return -ENODEV;
 	}
 
+	mutex_lock(&ctrl_pdata->suspend_mutex);
 	pinfo = &pdata->panel_info;
 	if (pinfo->panel_power_state != MDSS_PANEL_POWER_OFF) {
 		pr_debug("%s: set low fps mode on\n", __func__);
 		mdss_dsi_panel_low_fps_mode(ctrl_pdata, 1);
 	}
+	mutex_unlock(&ctrl_pdata->suspend_mutex);
 	return 0;
 }
 
@@ -1494,11 +1455,13 @@ static void mdss_dsi_pm_complete(struct device *dev)
 		return;
 	}
 
+	mutex_lock(&ctrl_pdata->suspend_mutex);
 	pinfo = &pdata->panel_info;
 	if (pinfo->panel_power_state != MDSS_PANEL_POWER_OFF) {
 		pr_debug("%s: set low fps mode off\n", __func__);
 		mdss_dsi_panel_low_fps_mode(ctrl_pdata, 0);
 	}
+	mutex_unlock(&ctrl_pdata->suspend_mutex);
 }
 
 struct device dsi_dev;
@@ -1727,13 +1690,6 @@ int dsi_panel_device_register(struct device_node *pan_node,
 
 	if (!gpio_is_valid(ctrl_pdata->disp_en_gpio))
 		pr_err("%s:%d, Disp_en gpio not specified\n",
-						__func__, __LINE__);
-
-	ctrl_pdata->disp_te_gpio = of_get_named_gpio(ctrl_pdev->dev.of_node,
-		"qcom,platform-te-gpio", 0);
-
-	if (!gpio_is_valid(ctrl_pdata->disp_te_gpio))
-		pr_err("%s:%d, TE gpio not specified\n",
 						__func__, __LINE__);
 
 	ctrl_pdata->bklt_en_gpio = of_get_named_gpio(ctrl_pdev->dev.of_node,

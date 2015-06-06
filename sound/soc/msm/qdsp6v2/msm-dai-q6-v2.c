@@ -2474,6 +2474,8 @@ static int msm_dai_q6_mi2s_hw_params(struct snd_pcm_substream *substream,
 			dai_data->bitwidth = 24;
 			break;
 		default:
+			pr_err("%s: format %d\n",
+				__func__, params_format(params));
 			return -EINVAL;
 		}
 	} else if (dai_data->force_bitwidth == BITWIDTH_16) {

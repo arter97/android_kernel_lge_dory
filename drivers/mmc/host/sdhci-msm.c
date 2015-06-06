@@ -310,7 +310,6 @@ struct sdhci_msm_pltfm_data {
 	unsigned char sup_clk_cnt;
 	int mpm_sdiowakeup_int;
 	int sdiowakeup_irq;
-	unsigned int ocr_mask; /* available voltages */
 };
 
 struct sdhci_msm_bus_vote {
@@ -1461,8 +1460,6 @@ static struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev)
 	int clk_table_len;
 	u32 *clk_table = NULL;
 	enum of_gpio_flags flags = OF_GPIO_ACTIVE_LOW;
-	u32 *sup_voltages = NULL;
-	int sup_volt_len;
 
 	pdata = devm_kzalloc(dev, sizeof(*pdata), GFP_KERNEL);
 	if (!pdata) {
@@ -1482,20 +1479,6 @@ static struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev)
 	else {
 		dev_notice(dev, "invalid bus-width, default to 1-bit mode\n");
 		pdata->mmc_bus_width = 0;
-	}
-
-	if (!sdhci_msm_dt_get_array(dev, "qcom,sup-voltages",
-			&sup_voltages, &sup_volt_len, 0)) {
-		for (i = 0; i < sup_volt_len; i += 2) {
-			u32 mask;
-
-			mask = mmc_vddrange_to_ocrmask(sup_voltages[i],
-					sup_voltages[i + 1]);
-			if (!mask)
-				dev_err(dev, "Invalide voltage range %d\n", i);
-			pdata->ocr_mask |= mask;
-		}
-		dev_dbg(dev, "OCR mask=0x%x\n", pdata->ocr_mask);
 	}
 
 	if (!of_property_read_u32(np, "qcom,cpu-dma-latency-us",
@@ -1523,12 +1506,10 @@ static struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev)
 		goto out;
 	}
 
-	/* Some devices might not use the vdd. So move vdd to optional property
-	 * and just keep going
-	 */
 	if (sdhci_msm_dt_parse_vreg_info(dev, &pdata->vreg_data->vdd_data,
 					 "vdd")) {
-		dev_warn(dev, "failed parsing vdd data\n");
+		dev_err(dev, "failed parsing vdd data\n");
+		goto out;
 	}
 	if (sdhci_msm_dt_parse_vreg_info(dev,
 					 &pdata->vreg_data->vdd_io_data,
@@ -3224,7 +3205,6 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	msm_host->mmc->caps2 |= MMC_CAP2_ASYNC_SDIO_IRQ_4BIT_MODE;
 	msm_host->mmc->pm_caps |= MMC_PM_KEEP_POWER | MMC_PM_WAKE_SDIO_IRQ;
 	msm_host->mmc->caps2 |= MMC_CAP2_CORE_PM;
-	msm_host->mmc->ocr_avail = msm_host->pdata->ocr_mask;
 
 	if (msm_host->pdata->nonremovable)
 		msm_host->mmc->caps |= MMC_CAP_NONREMOVABLE;

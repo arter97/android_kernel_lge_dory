@@ -217,10 +217,17 @@
 &mdss_dsi0 {
 	qcom,dsi-pref-prim-pan = <&dsi_nt35310_280p_cmd>;
 	vdd-supply = <&pm8226_l18>;
-	qcom,platform-supply-entry1 {
-		qcom,supply-name = "vdd";
-		qcom,supply-min-voltage = <3000000>;
-		qcom,supply-max-voltage = <3300000>;
+
+	qcom,panel-supply-entries {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		qcom,panel-supply-entry@0 {
+			reg = <0>;
+			qcom,supply-name = "vdd";
+			qcom,supply-min-voltage = <3000000>;
+			qcom,supply-max-voltage = <3300000>;
+		};
 	};
 };
 

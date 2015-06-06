@@ -292,9 +292,9 @@ struct msm_otg_platform_data {
 	bool dpdm_pulldown_added;
 	int vddmin_gpio;
 	bool rw_during_lpm_workaround;
+	bool no_set_vbus_power;
 	bool enable_ahb2ahb_bypass;
 	bool disable_retention_with_vdd_min;
-	bool no_set_vbus_power;
 	int usb_id_gpio;
 };
 

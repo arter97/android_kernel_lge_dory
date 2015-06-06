@@ -31,7 +31,7 @@
 #include "mdss_mdp.h"
 
 #define STATUS_CHECK_INTERVAL_MS 5000
-#define STATUS_CHECK_INTERVAL_MIN_MS 50
+#define STATUS_CHECK_INTERVAL_MIN_MS 200
 #define DSI_STATUS_CHECK_DISABLE 0
 
 static uint32_t interval = STATUS_CHECK_INTERVAL_MS;
@@ -61,38 +61,6 @@ static void check_dsi_ctrl_status(struct work_struct *work)
 	}
 
 	pdsi_status->mfd->mdp.check_dsi_status(work, interval);
-}
-
-/*
- * hw_vsync_handler() - Interrupt handler for HW VSYNC signal.
- * @irq		: irq line number
- * @data	: Pointer to the device structure.
- *
- * This function is called whenever a HW vsync signal is received from the
- * panel. This resets the timer of ESD delayed workqueue back to initial
- * value.
- */
-irqreturn_t hw_vsync_handler(int irq, void *data)
-{
-	struct mdss_dsi_ctrl_pdata *ctrl_pdata =
-			(struct mdss_dsi_ctrl_pdata *)data;
-	if (!ctrl_pdata) {
-		pr_err("%s: DSI ctrl not available\n", __func__);
-		return IRQ_HANDLED;
-	}
-
-	if (pstatus_data)
-		mod_delayed_work(system_wq, &pstatus_data->check_status,
-			msecs_to_jiffies(interval));
-	else
-		pr_err("Pstatus data is NULL\n");
-
-	if (!atomic_read(&ctrl_pdata->te_irq_ready))
-		atomic_inc(&ctrl_pdata->te_irq_ready);
-
-	ctrl_pdata->panel_data.panel_info.panel_dead = false;
-
-	return IRQ_HANDLED;
 }
 
 /*
@@ -148,12 +116,12 @@ static int fb_event_callback(struct notifier_block *self,
 
 		switch (*blank) {
 		case FB_BLANK_UNBLANK:
-		case FB_BLANK_HSYNC_SUSPEND:
-		case FB_BLANK_VSYNC_SUSPEND:
 			schedule_delayed_work(&pdata->check_status,
 				msecs_to_jiffies(interval));
 			break;
 		case FB_BLANK_POWERDOWN:
+		case FB_BLANK_HSYNC_SUSPEND:
+		case FB_BLANK_VSYNC_SUSPEND:
 		case FB_BLANK_NORMAL:
 			cancel_delayed_work(&pdata->check_status);
 			break;
@@ -224,9 +192,6 @@ int __init mdss_dsi_status_init(void)
 
 	INIT_DELAYED_WORK(&pstatus_data->check_status, check_dsi_ctrl_status);
 
-	wake_lock_init(&pstatus_data->status_wakelock, WAKE_LOCK_SUSPEND,
-					"DSI_STATUS_WAKELOCK");
-
 	pr_debug("%s: DSI ctrl status work queue initialized\n", __func__);
 
 	return rc;
@@ -234,7 +199,6 @@ int __init mdss_dsi_status_init(void)
 
 void __exit mdss_dsi_status_exit(void)
 {
-	wake_lock_destroy(&pstatus_data->status_wakelock);
 	fb_unregister_client(&pstatus_data->fb_notifier);
 	cancel_delayed_work_sync(&pstatus_data->check_status);
 	kfree(pstatus_data);

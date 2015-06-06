@@ -194,7 +194,6 @@ enum mdss_intf_events {
 	MDSS_EVENT_DSI_STREAM_SIZE,
 	MDSS_EVENT_DSI_DYNAMIC_SWITCH,
 	MDSS_EVENT_REGISTER_RECOVERY_HANDLER,
-	MDSS_EVENT_PANEL_RESET,
 };
 
 struct lcd_panel_info {
@@ -345,11 +344,8 @@ struct mdss_panel_info {
 	u32 wait_cycle;
 	u32 pdest;
 	u32 brightness_max;
-	u32 brightness_default;
 	u32 bl_max;
 	u32 bl_min;
-	u32 blmap_size;
-	u8  *blmap;
 	u32 fb_num;
 	u32 clk_rate;
 	u32 clk_min;
@@ -359,11 +355,9 @@ struct mdss_panel_info {
 	u32 out_format;
 	u32 rst_seq[MDSS_DSI_RST_SEQ_LEN];
 	u32 rst_seq_len;
-	u32 off_pre_rst_delay;
-	u32 off_post_rst_delay;
 	u32 vic; /* video identification code */
-	int bklt_ctrl;	/* backlight ctrl */
 	struct mdss_rect roi;
+	int bklt_ctrl;  /* backlight ctrl */
 	int pwm_pmic_gpio;
 	int pwm_lpg_chan;
 	int pwm_period;

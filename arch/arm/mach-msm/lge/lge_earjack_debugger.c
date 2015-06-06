@@ -246,7 +246,7 @@ static ssize_t earjack_debugger_always_enable_store(struct device *dev,
 
 	always_enable = r ? true : false;
 
-	earjack_debugger_enable_uart(earjack_dev, !!always_enable);
+	earjack_debugger_enable_uart(earjack_dev, always_enable);
 
 	return size;
 }
@@ -254,7 +254,7 @@ static ssize_t earjack_debugger_always_enable_store(struct device *dev,
 static ssize_t earjack_debugger_always_enable_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%d\n", !!always_enable);
+	return sprintf(buf, "%d\n", always_enable);
 }
 
 static DEVICE_ATTR(always_enable, S_IRUGO | S_IWUSR,

@@ -18,7 +18,6 @@
 enum {
 	HW_REV_UNKNOWN = 0,
 	HW_REV_EVB1,
-	HW_REV_EVB2,
 	HW_REV_A,
 	HW_REV_B,
 	HW_REV_C,
