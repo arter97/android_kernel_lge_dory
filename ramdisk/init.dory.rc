@@ -60,6 +60,7 @@ on post-fs-data
 on boot
     mount debugfs /sys/kernel/debug /sys/kernel/debug
     chown system system /sys/kernel/debug/kgsl/proc
+    chown system system /sys/class/graphics/fb0/idle_mode
     chown system system /sys/bus/i2c/devices/5-0020/idle_mode
 
     setprop ro.radio.noril yes
@@ -94,11 +95,6 @@ on boot
 
     # disable network time update
     setprop config.disable_networktime true
-
-    # Set the fix freq to 200MHz for KGSL
-    write /sys/class/kgsl/kgsl-3d0/devfreq/max_freq 200000000
-    write /sys/class/kgsl/kgsl-3d0/devfreq/min_freq 200000000
-    write /sys/class/kgsl/kgsl-3d0/devfreq/governor performance
 
 on fs
     start fs_mount
