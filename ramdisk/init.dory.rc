@@ -96,6 +96,11 @@ on boot
     # disable network time update
     setprop config.disable_networktime true
 
+    # Set the fix freq to 200MHz for KGSL
+    write /sys/class/kgsl/kgsl-3d0/devfreq/max_freq 200000000
+    write /sys/class/kgsl/kgsl-3d0/devfreq/min_freq 200000000
+    write /sys/class/kgsl/kgsl-3d0/devfreq/governor performance
+
 on fs
     start fs_mount
     wait /dev/block/mounted
